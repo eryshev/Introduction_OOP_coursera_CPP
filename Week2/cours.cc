@@ -60,20 +60,213 @@ typedef string CourseId;
 /*******************************************
  * Complétez le programme à partir d'ici.
  *******************************************/
+class Activity {
+public:
+    Activity(string salle, Day jour, double heure, double duration) :
+        salle(salle), horaire(jour, heure), duration(duration)
+    {}
+
+    Activity(string salle, Time time, double duration) :
+        salle(salle), horaire(time), duration(duration)
+    {}
+
+    //
+    Activity(Activity const &) = delete;
+
+    inline string getLocation() const {
+        return salle;
+    }
+
+    inline double getDuration() const {
+        return duration;
+    }
+
+    inline Time getTime() const {
+        return horaire;
+    }
+
+    bool conflicts(Activity const& that) const {
+        Time this_time = this->horaire;
+        Time that_time = that.horaire;
+        double b1 = this_time.hour(), b2 = that_time.hour();
+        double e1 = this_time.hour() + this->duration, e2 = that_time.hour() + that.duration;
+        return (this_time.day() == that_time.day()
+                && ((b1 <= b2 && b2 < e1) || (b2 <= b1 && b1 < e2)));
+    }
+
+    void print() const {
+        cout << "le ";
+        horaire.print();
+        cout << " en " << salle << ", durée ";
+        print_time(duration);
+    }
+
+private:
+    string salle;
+    double duration;
+    Time horaire;
+};
+
+class Course {
+public:
+    Course (CourseId const&_course_id, string const& _nom, const Activity & _lecture, const Activity & _seance, int const& _credits)
+        : course_id(_course_id), nom(_nom),
+          lecture(_lecture.getLocation(), _lecture.getTime(), _lecture.getDuration()),
+          seance(_seance.getLocation(), _seance.getTime(), _seance.getDuration()), credits(_credits)
+    {
+        /*course_id = _course_id;
+        nom = _nom;
+        credits = _credits;
+        Activity new_lecture(_lecture.getLocation(), _lecture.getTime(), _lecture.getDuration());
+        lecture = new_lecture;
+        Activity new_seance(_seance.getLocation(), _seance.getTime(), _seance.getDuration());
+        seance = new_seance;*/
+        cout << "Nouveau cours : " << course_id << endl;
+    }
+
+    Course(Course const &) = delete;
+
+    ~Course () {
+        cout << "Suppression du cours : " << course_id << endl;
+    }
+
+    inline CourseId getId() const { return course_id; }
+    inline string getTitle() const { return nom; }
+    inline int getCredits() const { return credits; }
+
+    inline double workload() const { return (lecture.getDuration() + seance.getDuration()); }
+    inline bool conflicts(Activity const& that) const { return (lecture.conflicts(that) || seance.conflicts(that));}
+    inline bool conflicts(Course const& that) const { return (that.conflicts(lecture) || that.conflicts(seance));}
+
+    void print() const {
+        cout << course_id << ": " << nom;
+        cout << "- cours "; lecture.print();
+        cout << ", exercices "; seance.print();
+        cout << ". crédits : " << credits;
+    }
 
 
-    cout << ", durée ";
+private:
+    CourseId course_id;
+    string nom;
+    Activity lecture;
+    Activity seance;
+    int credits;
+};
 
+class StudyPlan {
+public:
+    inline void add_course(Course const& that) {plan.push_back(const_cast<Course *>(&that));}
 
-    cout << ". crédits : ";
+    bool conflicts(CourseId cid, vector<CourseId> list) const {
+        Course* cours = exists(cid);
+        if (exists(cid) == NULL) return false;
 
+        unsigned int size = list.size();
+        for (unsigned int i = 0; i < size; ++i) {
+            Course* maybe_cours;
+            maybe_cours = exists(list[i]);
+            if(maybe_cours != NULL && maybe_cours->conflicts(*cours)) return true;
+        }
 
-      cout << "Aucun cours n'est compatible avec la sélection de cours." << endl;
+        return false;
+    }
 
+    void print(CourseId cid) const {
+        Course* cours = exists(cid);
+        if (cours != NULL) cours->print();
+    }
 
-    cout << "Total de crédits   : ";
-    cout << "Charge journalière : ";
-    cout << "Suggestions :" << endl;
+    unsigned int credits(CourseId cid) const {
+        Course* cours = exists(cid);
+        return (cours != NULL) ? cours->getCredits() : 0;
+    }
+
+    double workload(CourseId cid) const {
+        Course* cours = exists(cid);
+        //cout << "cid = " << cid << " workload = " << cours->workload() << endl;
+        return (cours != NULL) ? cours->workload() : 0;
+    }
+
+    void printCourseSuggestions(vector<CourseId> list) const {
+        unsigned int size = plan.size();
+        bool compatible_found = false;
+        for (unsigned int i = 0; i < size; ++i) {
+            if (!conflicts(plan[i]->getId(), list)) {
+                plan[i]->print();
+                cout << endl;
+                compatible_found = true;
+            }
+        }
+        if(!compatible_found) cout << "Aucun cours n'est compatible avec la sélection de cours." << endl;
+    }
+
+private:
+
+    Course* exists(CourseId cid) const {
+        unsigned int size = plan.size();
+        for (unsigned int i = 0; i < size; ++i) {
+            if(plan[i]->getId() == cid) return plan[i];
+        }
+        return NULL;
+    }
+
+    vector<Course*> plan;
+};
+
+class Schedule {
+public:
+    Schedule(StudyPlan const& study_plan)
+        : study_plan(study_plan)
+    {}
+
+    bool add_course(CourseId cid) {
+        bool is_conflict = study_plan.conflicts(cid, user_plan);
+        if (!is_conflict) {
+            user_plan.push_back(cid);
+            return true;
+        }
+        else return false;
+    }
+
+    double computeDailyWorkload() const {
+        unsigned int size = user_plan.size();
+        double workload(0.);
+        for (unsigned int i = 0; i < size; ++i) {
+            workload += study_plan.workload(user_plan[i]);
+        }
+        //cout << "workload = " << workload << endl;
+        return workload / 5.;
+    }
+
+    int computeTotalCredits() const {
+        unsigned int size = user_plan.size();
+        int credits(0);
+        for (unsigned int i = 0; i < size; ++i) {
+            credits += study_plan.credits(user_plan[i]);
+        }
+        return credits;
+    }
+
+    void print() const {
+        unsigned int size = user_plan.size();
+        for (unsigned int i = 0; i < size; ++i) {
+            study_plan.print(user_plan[i]);
+            cout << endl;
+        }
+        cout << "Total de crédits   : " << computeTotalCredits() << endl;
+        cout << "Charge journalière : ";
+        print_time(computeDailyWorkload());
+        cout << endl;
+        cout << "Suggestions :" << endl;
+        study_plan.printCourseSuggestions(user_plan);
+        cout << endl;
+    }
+
+private:
+    StudyPlan const& study_plan;
+    vector<CourseId> user_plan;
+};
 
 
 /*******************************************
